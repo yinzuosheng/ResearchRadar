@@ -1,0 +1,6 @@
+chunk_size: 800
+chunk_overlap: 120
+top_k: 6
+vector_store_path: data/vector_store
+collection_name: intel_reports
+max_text_chars: 20000

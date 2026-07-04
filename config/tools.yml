@@ -1,0 +1,28 @@
+tavily:
+  endpoint: https://api.tavily.com/search
+  api_key_env: TAVILY_API_KEY
+  search_depth: advanced
+bing:
+  endpoint: https://api.bing.microsoft.com/v7.0/search
+  api_key_env: BING_API_KEY
+semantic_scholar:
+  endpoint: https://api.semanticscholar.org/graph/v1/paper/search
+  api_key_env: SEMANTIC_SCHOLAR_API_KEY
+openalex:
+  endpoint: https://api.openalex.org/works
+  email_env: OPENALEX_EMAIL
+arxiv:
+  endpoint: http://export.arxiv.org/api/query
+feishu:
+  webhook_env: FEISHU_WEBHOOK
+dingtalk:
+  webhook_env: DINGTALK_WEBHOOK
+smtp:
+  host_env: SMTP_HOST
+  port_env: SMTP_PORT
+  user_env: SMTP_USER
+  pass_env: SMTP_PASS
+  to_env: SMTP_TO
+http:
+  user_agent: IntelRagAgent/1.0
+  timeout_seconds: 20

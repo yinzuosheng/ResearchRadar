@@ -1,0 +1,31 @@
+topics:
+  - LLM latest papers
+  - Agent framework release notes
+  - RAG evaluation benchmarks
+paper_queries:
+  - agentic workflow
+  - retrieval augmented generation
+  - tool calling evaluation
+search:
+  provider: tavily
+  max_results: 5
+papers:
+  providers:
+    - semantic_scholar
+    - openalex
+    - arxiv
+  max_results: 10
+  include_pdf: false
+  min_year: 2023
+ingestion:
+  web: false
+  papers: true
+schedule:
+  enabled: true
+  time: "08:00"
+  timezone: "Asia/Shanghai"
+push:
+  enabled: false
+  channel: feishu
+report:
+  top_k: 6

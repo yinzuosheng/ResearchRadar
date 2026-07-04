@@ -1,0 +1,17 @@
+Create a daily intelligence brief using the sources.
+
+Question:
+{input}
+
+Sources:
+{context}
+
+Output format:
+- Title
+- New Papers (bullets with title, venue, year)
+- Key Methods (bullets)
+- Findings (bullets)
+- Risks (bullets)
+- Opportunities (bullets)
+- Watchlist (bullets)
+- Sources (bullets with URLs)

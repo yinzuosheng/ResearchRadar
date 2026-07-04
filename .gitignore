@@ -1,0 +1,9 @@
+*.pyc
+__pycache__/
+data/vector_store/
+data/cache/
+data/paper_cache/
+data/reports/
+.env
+data/sources.json
+data/paper_sources.json
