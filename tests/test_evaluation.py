@@ -17,7 +17,7 @@ from evaluation.metrics import (
     unsupported_claim_rate,
 )
 from evaluation.metrics import answer_level_metrics
-from evaluation.run import EvaluationError, run_evaluation
+from evaluation.run import EvaluationError, _two_stage_acceptance, run_evaluation
 from evaluation.health import run_provider_health
 from domain.models import AnswerCitation, CitedAnswer, EvidenceChunk
 from retrieval.hybrid import RetrievalTrace
@@ -438,6 +438,7 @@ def _evaluation_fixture(tmp_path, *, hybrid=None):
         "keyword": {"q1": ["p1:c2"], "q2": ["p2:c4"]},
         "vector": {"q1": ["other:c0", "p1:c2"], "q2": ["other:c0"]},
         "hybrid": hybrid or {"q1": ["p1:c2"], "q2": ["other:c0", "p2:c4"]},
+        "two_stage": {"q1": ["p1:c2"], "q2": ["p2:c4"]},
     }
     retrievers = {
         mode: FakeRetriever(mode, ranking, events) for mode, ranking in rankings.items()
@@ -508,6 +509,69 @@ def test_evaluator_uses_same_questions_and_calculates_exact_metrics(tmp_path):
     serialized = result.json_path.read_text(encoding="utf-8") + result.markdown_path.read_text(encoding="utf-8")
     for forbidden in ("canonical evidence", "untrusted raw output", "confident but unsupported", str(tmp_path)):
         assert forbidden not in serialized
+
+
+def test_evaluator_includes_two_stage_and_reports_promotion_gate(tmp_path):
+    dataset, events, retrievers, store = _evaluation_fixture(tmp_path)
+
+    result = run_evaluation(
+        dataset,
+        keyword_retriever=retrievers["keyword"],
+        vector_retriever=retrievers["vector"],
+        hybrid_retriever=retrievers["hybrid"],
+        two_stage_retriever=retrievers["two_stage"],
+        qa_factory=FakeQa,
+        chunk_store=store,
+        reports_dir=tmp_path / "reports",
+        include_answer_metrics=False,
+    )
+
+    assert events == [
+        (mode, question, 5)
+        for mode in ("keyword", "vector", "hybrid", "two_stage")
+        for question in ("q1", "q2")
+    ]
+    assert set(result.metrics) == {"keyword", "vector", "hybrid", "two_stage", "overall"}
+    assert result.acceptance["code"] == "two_stage_promotion_gate_failed"
+    assert result.acceptance["checks"]["cross_paper_strict_improvement"] is False
+
+
+def test_two_stage_promotion_gate_passes_when_cross_paper_improves_without_natural_language_regression():
+    metrics = {
+        "cross_paper": {
+            "hybrid": {"paper_recall_at_5": 0.5, "evidence_group_recall_at_5": 0.5},
+            "two_stage": {"paper_recall_at_5": 0.75, "evidence_group_recall_at_5": 0.5},
+        },
+        "natural_language": {
+            "hybrid": {"evidence_group_recall_at_5": 0.8},
+            "two_stage": {"evidence_group_recall_at_5": 0.8},
+        },
+    }
+
+    acceptance = _two_stage_acceptance(metrics)
+
+    assert acceptance["accepted"] is True
+    assert acceptance["code"] == "two_stage_promotion_gate_passed"
+    assert all(acceptance["checks"].values())
+
+
+def test_two_stage_gate_fails_without_strict_cross_paper_improvement(tmp_path):
+    dataset, _, retrievers, store = _evaluation_fixture(tmp_path)
+    result = run_evaluation(
+        dataset,
+        keyword_retriever=retrievers["keyword"],
+        vector_retriever=retrievers["vector"],
+        hybrid_retriever=retrievers["hybrid"],
+        two_stage_retriever=retrievers["hybrid"],
+        qa_factory=FakeQa,
+        chunk_store=store,
+        reports_dir=tmp_path / "reports",
+        include_answer_metrics=False,
+    )
+
+    assert result.acceptance["accepted"] is False
+    assert result.acceptance["code"] == "two_stage_promotion_gate_failed"
+    assert result.acceptance["checks"]["cross_paper_strict_improvement"] is False
 
 
 def test_hybrid_recall_regression_fails_acceptance(tmp_path):

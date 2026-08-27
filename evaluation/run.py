@@ -135,6 +135,10 @@ def _safe_retrieval_trace(retriever: object) -> dict[str, Any] | None:
         "query_variants": [str(item) for item in values.get("query_variants", [])[:6]],
         "fallback_used": bool(values.get("fallback_used", False)),
         "retrieval_confidence": round(float(values.get("retrieval_confidence", 0.0)), 3),
+        "stage1_keyword_candidates": int(values.get("stage1_keyword_candidates", 0)),
+        "stage1_vector_candidates": int(values.get("stage1_vector_candidates", 0)),
+        "candidate_paper_ids": [str(item) for item in values.get("candidate_paper_ids", [])[:16]],
+        "stage2_candidates": int(values.get("stage2_candidates", 0)),
     }
 
 
@@ -200,7 +204,9 @@ def _markdown(payload: dict[str, Any]) -> str:
         "| Mode | Evidence-group Recall@5 | MRR | Paper Recall@5 |",
         "|---|---:|---:|---:|",
     ]
-    for mode in ("keyword", "vector", "hybrid"):
+    for mode in ("keyword", "vector", "hybrid", "two_stage"):
+        if mode not in payload["metrics"]:
+            continue
         metrics = payload["metrics"][mode]
         lines.append(
             f"| {mode} | {metrics['evidence_group_recall_at_5']:.6f} | {metrics['mrr']:.6f} | "
@@ -306,6 +312,39 @@ def _validated_config(config: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def _two_stage_acceptance(metrics_by_category: dict[str, Any]) -> dict[str, Any]:
+    hybrid = metrics_by_category.get("cross_paper", {}).get("hybrid", {})
+    two_stage = metrics_by_category.get("cross_paper", {}).get("two_stage", {})
+    natural_hybrid = metrics_by_category.get("natural_language", {}).get("hybrid", {})
+    natural_two_stage = metrics_by_category.get("natural_language", {}).get("two_stage", {})
+    checks = {
+        "cross_paper_paper_recall_not_lower": two_stage.get("paper_recall_at_5", 0.0)
+        >= hybrid.get("paper_recall_at_5", 0.0),
+        "cross_paper_evidence_group_recall_not_lower": two_stage.get(
+            "evidence_group_recall_at_5", 0.0
+        )
+        >= hybrid.get("evidence_group_recall_at_5", 0.0),
+        "cross_paper_strict_improvement": (
+            two_stage.get("paper_recall_at_5", 0.0)
+            > hybrid.get("paper_recall_at_5", 0.0)
+            or two_stage.get("evidence_group_recall_at_5", 0.0)
+            > hybrid.get("evidence_group_recall_at_5", 0.0)
+        ),
+        "natural_language_evidence_group_recall_not_lower": natural_two_stage.get(
+            "evidence_group_recall_at_5", 0.0
+        )
+        >= natural_hybrid.get("evidence_group_recall_at_5", 0.0)
+        if natural_two_stage
+        else False,
+    }
+    accepted = all(checks.values())
+    return {
+        "accepted": accepted,
+        "code": "two_stage_promotion_gate_passed" if accepted else "two_stage_promotion_gate_failed",
+        "checks": checks,
+    }
+
+
 def run_evaluation(
     dataset_path: str | Path,
     *,
@@ -313,6 +352,8 @@ def run_evaluation(
     vector_retriever,
     hybrid_retriever=None,
     hybrid_factory=None,
+    two_stage_retriever=None,
+    two_stage_factory=None,
     qa_factory,
     chunk_store,
     reports_dir: str | Path = Path("data/reports/evaluation"),
@@ -345,6 +386,15 @@ def run_evaluation(
         "vector": vector_retriever,
         "hybrid": hybrid_retriever,
     }
+    if two_stage_factory is not None:
+        two_stage_retriever = two_stage_factory(
+            keyword_retriever,
+            vector_retriever,
+            hybrid_retriever,
+            **effective_config.get("two_stage", {}),
+        )
+    if two_stage_retriever is not None:
+        modes["two_stage"] = two_stage_retriever
     mode_metrics: dict[str, dict[str, float]] = {}
     category_values: dict[str, dict[str, dict[str, list[float]]]] = {
         question.category: {
@@ -353,7 +403,7 @@ def run_evaluation(
                 "mrr": [],
                 "paper_recall_at_5": [],
             }
-            for mode in ("keyword", "vector", "hybrid")
+                for mode in modes
         }
         for question in questions
     }
@@ -453,10 +503,14 @@ def run_evaluation(
         and metrics["hybrid"]["evidence_group_recall_at_5"]
         < metrics["vector"]["evidence_group_recall_at_5"]
     )
-    acceptance = {
-        "accepted": not regression,
-        "code": "hybrid_recall_regression" if regression else "accepted",
-    }
+    acceptance = (
+        _two_stage_acceptance(metrics_by_category)
+        if "two_stage" in modes
+        else {
+            "accepted": not regression,
+            "code": "hybrid_recall_regression" if regression else "accepted",
+        }
+    )
     timestamp, stamp = _timestamp((now or (lambda: datetime.now(timezone.utc)))())
     payload = {
         "timestamp_utc": timestamp,
