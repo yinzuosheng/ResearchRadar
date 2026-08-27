@@ -10,6 +10,7 @@ from evaluation.dataset import DatasetError, load_answer_rows, load_questions
 from evaluation.metrics import (
     citation_precision,
     deterministic_mean,
+    evidence_group_recall_at_k,
     evidence_coverage,
     recall_at_k,
     reciprocal_rank,
@@ -34,6 +35,20 @@ def test_metrics_deduplicate_rankings_and_use_safe_zero_denominators():
     assert recall_at_k(["a", "a", "b"], ["a", "b"], k=2) == 0.5
     assert reciprocal_rank(["x", "x", "b"], ["b"]) == pytest.approx(1 / 3)
     assert recall_at_k(["a"], [], k=5) == 0.0
+
+
+def test_evidence_group_recall_treats_chunks_within_a_group_as_alternatives():
+    groups = [("p1:c1", "p1:c2"), ("p2:c1",)]
+
+    assert evidence_group_recall_at_k(["p1:c2", "p2:c1"], groups, k=5) == 1.0
+    assert evidence_group_recall_at_k(["p1:c1"], groups, k=5) == 0.5
+
+
+def test_evidence_group_recall_deduplicates_ranked_ids_and_rejects_empty_groups():
+    assert evidence_group_recall_at_k(["p1:c1", "p1:c1"], [("p1:c1",)], k=5) == 1.0
+
+    with pytest.raises(ValueError, match="^evaluation_metric_invalid$"):
+        evidence_group_recall_at_k(["p1:c1"], [()], k=5)
 
 
 def test_dataset_accepts_optional_category_and_defaults_to_uncategorized(tmp_path):
@@ -284,17 +299,22 @@ def test_normal_loader_rejects_placeholders_but_template_mode_loads_20_topics():
 
 def test_annotated_dataset_contains_concrete_local_evidence_ids():
     questions = load_questions(Path("data/evaluation/questions-annotated.jsonl"))
-    assert len(questions) == 36
+    assert len(questions) == 48
     assert {item.category for item in questions} == {
         "exact_term",
         "natural_language",
         "cross_paper",
     }
-    assert {item.category: sum(q.category == item.category for q in questions) for item in questions} == {
-        "exact_term": 12,
-        "natural_language": 12,
-        "cross_paper": 12,
+    assert {category: sum(q.category == category for q in questions) for category in {"exact_term", "natural_language", "cross_paper"}} == {
+        "exact_term": 16,
+        "natural_language": 16,
+        "cross_paper": 16,
     }
+    assert all(
+        group.rationale.strip()
+        for question in questions
+        for group in question.evidence_groups
+    )
     assert all(
         ":p" in chunk_id or ":abstract:" in chunk_id
         for question in questions
@@ -454,11 +474,11 @@ def test_evaluator_uses_same_questions_and_calculates_exact_metrics(tmp_path):
         for mode in ("keyword", "vector", "hybrid")
         for question in ("q1", "q2")
     ]
-    assert result.metrics["keyword"]["recall_at_5"] == 1.0
+    assert result.metrics["keyword"]["evidence_group_recall_at_5"] == 1.0
     assert result.metrics["keyword"]["mrr"] == 1.0
-    assert result.metrics["vector"]["recall_at_5"] == 0.5
+    assert result.metrics["vector"]["evidence_group_recall_at_5"] == 0.5
     assert result.metrics["vector"]["mrr"] == 0.25
-    assert result.metrics["hybrid"]["recall_at_5"] == 1.0
+    assert result.metrics["hybrid"]["evidence_group_recall_at_5"] == 1.0
     assert result.metrics["hybrid"]["mrr"] == 0.75
     assert result.metrics["overall"] == {
         "citation_precision": 1.0,
@@ -484,7 +504,7 @@ def test_evaluator_uses_same_questions_and_calculates_exact_metrics(tmp_path):
         "category_counts": {"exact_term": 1, "natural_language": 1},
         "evaluation_scope": "answer_and_retrieval",
     }
-    assert payload["metrics_by_category"]["exact_term"]["keyword"]["recall_at_5"] == 1.0
+    assert payload["metrics_by_category"]["exact_term"]["keyword"]["evidence_group_recall_at_5"] == 1.0
     serialized = result.json_path.read_text(encoding="utf-8") + result.markdown_path.read_text(encoding="utf-8")
     for forbidden in ("canonical evidence", "untrusted raw output", "confident but unsupported", str(tmp_path)):
         assert forbidden not in serialized
@@ -526,7 +546,7 @@ def test_retrieval_only_evaluation_skips_qa_calls(tmp_path):
         include_answer_metrics=False,
     )
 
-    assert result.metrics["hybrid"]["recall_at_5"] == 1.0
+    assert result.metrics["hybrid"]["evidence_group_recall_at_5"] == 1.0
     assert result.metrics["overall"] == {
         "citation_precision": 0.0,
         "evidence_coverage": 0.0,
