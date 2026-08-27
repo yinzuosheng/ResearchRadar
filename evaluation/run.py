@@ -274,7 +274,10 @@ def _validated_config(config: dict[str, Any] | None) -> dict[str, Any]:
     }
     if config is None:
         return default
-    if not isinstance(config, dict) or set(config) != {"retrieval_k", "hybrid"}:
+    if not isinstance(config, dict) or set(config) not in (
+        {"retrieval_k", "hybrid"},
+        {"retrieval_k", "hybrid", "two_stage"},
+    ):
         raise EvaluationError("evaluation_config_invalid")
     hybrid = config.get("hybrid")
     if not isinstance(hybrid, dict) or set(hybrid) != {
@@ -302,7 +305,30 @@ def _validated_config(config: dict[str, Any] | None) -> dict[str, Any]:
         )
     ):
         raise EvaluationError("evaluation_config_invalid")
-    return {
+    two_stage = config.get(
+        "two_stage",
+        {
+            "paper_candidate_k": 50,
+            "paper_k": 12,
+            "chunk_candidate_k": 40,
+            "max_chunks_per_paper": 2,
+        },
+    )
+    if not isinstance(two_stage, dict) or set(two_stage) != {
+        "paper_candidate_k", "paper_k", "chunk_candidate_k", "max_chunks_per_paper"
+    }:
+        raise EvaluationError("evaluation_config_invalid")
+    limits = {
+        "paper_candidate_k": (5, 200),
+        "paper_k": (2, 50),
+        "chunk_candidate_k": (5, 200),
+        "max_chunks_per_paper": (1, 5),
+    }
+    for name, (lower, upper) in limits.items():
+        value = two_stage.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or not lower <= value <= upper:
+            raise EvaluationError("evaluation_config_invalid")
+    validated = {
         "retrieval_k": retrieval_k,
         "hybrid": {
             "keyword_weight": float(hybrid["keyword_weight"]),
@@ -310,6 +336,9 @@ def _validated_config(config: dict[str, Any] | None) -> dict[str, Any]:
             "rrf_k": rrf_k,
         },
     }
+    if "two_stage" in config:
+        validated["two_stage"] = {name: int(two_stage[name]) for name in limits}
+    return validated
 
 
 def _two_stage_acceptance(metrics_by_category: dict[str, Any]) -> dict[str, Any]:

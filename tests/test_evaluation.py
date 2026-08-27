@@ -1005,6 +1005,12 @@ def test_default_evaluation_uses_runtime_hybrid_weights(tmp_path, monkeypatch):
             "vector_weight": 1.0,
             "rrf_k": 60,
         },
+        "two_stage": {
+            "paper_candidate_k": 50,
+            "paper_k": 12,
+            "chunk_candidate_k": 40,
+            "max_chunks_per_paper": 2,
+        },
     }
 
 
