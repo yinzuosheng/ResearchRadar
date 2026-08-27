@@ -390,7 +390,7 @@ def run_evaluation(
     now: Callable[[], datetime] | None = None,
     include_answer_metrics: bool = True,
 ) -> EvaluationResult:
-    """Evaluate identical questions in three modes and emit ID-only reports.
+    """Evaluate identical questions in the configured retrieval modes and emit ID-only reports.
 
     Citation precision counts relevant cited IDs that also exist in the trusted
     chunk store. Evidence coverage is the share of question/mode pairs with at
