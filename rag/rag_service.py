@@ -1,44 +1,58 @@
-from langchain_core.documents import Document
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
+"""Backward-compatible rendering over citation-safe question answering."""
 
-from model.factory import chat_model
-from rag.vector_store import VectorStoreService
-from utils.prompt_loader import load_rag_prompt, load_report_prompt
+from __future__ import annotations
+
+from domain.models import CitedAnswer
 
 
 class RagSummarizeService:
-    def __init__(self) -> None:
-        self.vector_store = VectorStoreService()
-        self.retriever = self.vector_store.get_retriever()
-        self.summary_prompt = PromptTemplate.from_template(load_rag_prompt())
-        self.report_prompt = PromptTemplate.from_template(load_report_prompt())
-        self.summary_chain = self.summary_prompt | chat_model | StrOutputParser()
-        self.report_chain = self.report_prompt | chat_model | StrOutputParser()
+    def __init__(self, *, cited_qa=None) -> None:
+        self._cited_qa = cited_qa or self._build_default_service()
 
-    def _build_context(self, docs: list[Document]) -> str:
-        if not docs:
-            return ""
-        parts = []
-        for idx, doc in enumerate(docs, start=1):
-            parts.append(
-                f"[Source {idx}]: {doc.page_content} | metadata: {doc.metadata}"
-            )
-        return "\n".join(parts)
+    @staticmethod
+    def _build_default_service():
+        from model.factory import build_chat_model
+        from rag.vector_store import VectorStoreService
+        from retrieval.hybrid import HybridRetriever
+        from retrieval.keyword_index import KeywordIndex
+        from storage.database import ResearchDatabase
+        from storage.paths import default_database_path
+        from utils.config import load_rag_config
+        from workflows.qa import CitedQaService
 
-    def _retrieve(self, query: str) -> list[Document]:
-        return self.retriever.invoke(query)
+        config = load_rag_config()
+        database = ResearchDatabase(default_database_path())
+        vector = VectorStoreService(database=database)
+        hybrid = HybridRetriever(
+            KeywordIndex(database),
+            vector,
+            keyword_weight=float(config.get("keyword_weight", 2.0)),
+            vector_weight=float(config.get("vector_weight", 0.5)),
+            rrf_k=int(config.get("rrf_k", 60)),
+            candidate_k=int(config.get("candidate_k", 20)),
+            max_chunks_per_paper=int(config.get("max_chunks_per_paper", 4)),
+        )
+        return CitedQaService(
+            hybrid,
+            build_chat_model(),
+            chunk_store=database,
+            answer_k=int(config.get("answer_k", 8)),
+        )
+
+    def cited_answer(self, query: str) -> CitedAnswer:
+        return self._cited_qa.answer(query)
 
     def rag_summarize(self, query: str) -> str:
-        docs = self._retrieve(query)
-        if not docs:
-            return "Knowledge base is empty. Run collection first."
-        context = self._build_context(docs)
-        return self.summary_chain.invoke({"input": query, "context": context})
+        answer = self.cited_answer(query)
+        citations = "\n".join(
+            f"[{citation.title}, p. {citation.page_number}]"
+            for citation in answer.citations
+        )
+        return (
+            f"{answer.answer_markdown}\n\n{citations}"
+            if citations
+            else answer.answer_markdown
+        )
 
     def rag_report(self, query: str) -> str:
-        docs = self._retrieve(query)
-        if not docs:
-            return "Knowledge base is empty. Run collection first."
-        context = self._build_context(docs)
-        return self.report_chain.invoke({"input": query, "context": context})
+        return self.rag_summarize(query)

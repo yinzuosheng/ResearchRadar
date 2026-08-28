@@ -6,24 +6,20 @@ paper_queries:
   - agentic workflow
   - retrieval augmented generation
   - tool calling evaluation
-search:
-  provider: tavily
-  max_results: 5
 papers:
   providers:
-    - semantic_scholar
     - openalex
-    - arxiv
   max_results: 10
   include_pdf: false
   min_year: 2023
 ingestion:
-  web: false
   papers: true
 schedule:
   enabled: true
   time: "08:00"
   timezone: "Asia/Shanghai"
+  day_of_week: mon
+  historical_limit: 50
 push:
   enabled: false
   channel: feishu

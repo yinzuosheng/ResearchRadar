@@ -1,0 +1,22 @@
+domain: water-color remote-sensing prediction
+from_year: 2010
+target_metadata: 600
+target_fulltext: 10
+minimum_relevance_groups: 2
+queries:
+  - chlorophyll-a Sentinel-3 OLCI inland water remote sensing
+  - hyperspectral optical water quality retrieval machine learning
+  - turbidity UAV remote sensing lake prediction
+  - lake eutrophication satellite deep learning
+  - cyanobacteria remote sensing neural network monitoring
+  - total suspended solids Landsat regression inland water
+  - water quality satellite transfer learning domain adaptation
+  - inland water remote sensing reflectance estimation
+  - colored dissolved organic matter remote sensing prediction
+  - Secchi depth multispectral satellite machine learning
+recent_queries:
+  from_year: 2022
+  target: 120
+representative_queries:
+  sort: cited_by_count
+  target: 80

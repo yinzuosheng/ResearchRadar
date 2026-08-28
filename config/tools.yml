@@ -1,18 +1,25 @@
-tavily:
-  endpoint: https://api.tavily.com/search
-  api_key_env: TAVILY_API_KEY
-  search_depth: advanced
-bing:
-  endpoint: https://api.bing.microsoft.com/v7.0/search
-  api_key_env: BING_API_KEY
-semantic_scholar:
-  endpoint: https://api.semanticscholar.org/graph/v1/paper/search
-  api_key_env: SEMANTIC_SCHOLAR_API_KEY
 openalex:
   endpoint: https://api.openalex.org/works
-  email_env: OPENALEX_EMAIL
-arxiv:
-  endpoint: http://export.arxiv.org/api/query
+  content_endpoint: https://content.openalex.org/works
+  api_key_env: OPENALEX_API_KEY
+  requests_per_second: 5
+unpaywall:
+  endpoint: https://api.unpaywall.org/v2
+  email_env: UNPAYWALL_EMAIL
+  requests_per_second: 2
+core:
+  endpoint: https://api.core.ac.uk/v3
+  api_key_env: CORE_API_KEY
+  requests_per_second: 0.5
+crossref:
+  endpoint: https://api.crossref.org/works
+  email_env: UNPAYWALL_EMAIL
+  requests_per_second: 2
+semantic_scholar:
+  endpoint: https://api.semanticscholar.org/graph/v1
+  api_key_env: SEMANTIC_SCHOLAR_API_KEY
+  # Stay below S2's cumulative 1 req/s limit: one DOI request every 2 seconds.
+  requests_per_second: 0.5
 feishu:
   webhook_env: FEISHU_WEBHOOK
 dingtalk:
@@ -24,5 +31,6 @@ smtp:
   pass_env: SMTP_PASS
   to_env: SMTP_TO
 http:
-  user_agent: IntelRagAgent/1.0
-  timeout_seconds: 20
+  user_agent: ResearchLens/0.1
+  timeout_seconds: 30
+  retry_attempts: 3

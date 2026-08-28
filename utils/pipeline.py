@@ -5,12 +5,16 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 
-from rag.rag_service import RagSummarizeService
-from rag.vector_store import VectorStoreService
+from domain.models import EvidenceChunk, PaperCandidate
+from domain.statuses import FAILED, INDEXED
+from ingestion.pipeline import ResearchIngestor, VectorStoreIndex
+from providers.registry import ProviderRegistry
+from storage.database import ResearchDatabase, normalize_doi, normalize_title
+from storage.paths import data_dir, default_database_path
 from utils.config import load_agent_config, load_rag_config
 from utils.content_loader import load_pdf_text, load_url_text
 from utils.logger import logger
-from utils.search import search_papers, search_web
+from utils.search import search_papers
 from utils.text_splitter import split_text
 from utils.push import push_message
 
@@ -41,22 +45,7 @@ def _normalize_paper_providers(provider: str | None) -> list[str]:
     if provider:
         return [provider]
     cfg = load_agent_config()
-    return cfg.get("papers", {}).get("providers", ["semantic_scholar"])
-
-
-def collect_sources(topics: list[str], provider: str, max_results: int) -> list[dict]:
-    sources = []
-    seen = set()
-    for topic in topics:
-        results = search_web(topic, provider, max_results)
-        for item in results:
-            url = item.get("url")
-            if not url or url in seen:
-                continue
-            seen.add(url)
-            item["topic"] = topic
-            sources.append(item)
-    return sources
+    return cfg.get("papers", {}).get("providers", ["openalex"])
 
 
 def save_sources(sources: list[dict]) -> None:
@@ -72,8 +61,11 @@ def save_paper_sources(sources: list[dict]) -> None:
 
 
 def ingest_sources(sources: list[dict]) -> dict:
+    from rag.vector_store import VectorStoreService
+
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     store = VectorStoreService()
+    database = ResearchDatabase(default_database_path())
     ingested = 0
     for src in sources:
         url = src.get("url", "")
@@ -96,14 +88,45 @@ def ingest_sources(sources: list[dict]) -> dict:
             continue
 
         chunks = split_text(text)
+        record = database.upsert_candidate(
+            PaperCandidate(
+                source=src.get("source") or "manual",
+                source_id=src.get("source_id") or url,
+                title=src.get("title") or url,
+                landing_url=url,
+            )
+        )
+        paper_id = record.paper_id
         metadata = {
             "url": url,
-            "title": src.get("title"),
+            "paper_id": paper_id,
+            "title": src.get("title") or url,
+            "page_number": 0,
+            "section": "legacy_url",
             "source": src.get("source"),
             "topic": src.get("topic"),
         }
-        docs = [Document(page_content=chunk, metadata=metadata) for chunk in chunks]
+        evidence_chunks = [
+            EvidenceChunk(
+                chunk_id=f"{paper_id}:legacy:c{index}",
+                paper_id=paper_id,
+                title=metadata["title"],
+                page_number=0,
+                section="legacy_url",
+                text=chunk,
+            )
+            for index, chunk in enumerate(chunks)
+        ]
+        database.replace_chunks(paper_id, evidence_chunks)
+        docs = [
+            Document(
+                page_content=f"标题：{chunk.title}\n位置：{chunk.section or '摘要'}\n正文：{chunk.text}",
+                metadata={**metadata, "chunk_id": chunk.chunk_id, "canonical_text": chunk.text},
+            )
+            for chunk in evidence_chunks
+        ]
         store.add_documents(docs)
+        database.update_status(paper_id, INDEXED)
         ingested += 1
         logger.info("ingested %s chunks for %s", len(chunks), url)
 
@@ -158,8 +181,11 @@ def _truncate_text(text: str) -> str:
 
 
 def ingest_papers(papers: list[dict], include_pdf: bool) -> dict:
+    from rag.vector_store import VectorStoreService
+
     PAPER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     store = VectorStoreService()
+    database = ResearchDatabase(default_database_path())
     ingested = 0
 
     for paper in papers:
@@ -186,15 +212,54 @@ def ingest_papers(papers: list[dict], include_pdf: bool) -> dict:
 
         trimmed = _truncate_text(text)
         chunks = split_text(trimmed)
+        record = database.upsert_candidate(
+            PaperCandidate(
+                source=paper.get("source") or "legacy",
+                source_id=paper.get("source_id") or url or cache_key,
+                title=paper.get("title") or url or "Untitled paper",
+                doi=paper.get("doi"),
+                authors=paper.get("authors") or [],
+                year=paper.get("year"),
+                venue=paper.get("venue"),
+                abstract=paper.get("abstract"),
+                landing_url=url or None,
+                pdf_url=paper.get("pdf_url"),
+                license=paper.get("license"),
+                cited_by_count=int(paper.get("cited_by_count") or 0),
+            )
+        )
+        paper_id = record.paper_id
         metadata = {
             "url": paper.get("url"),
-            "title": paper.get("title"),
+            "paper_id": paper_id,
+            "title": paper.get("title") or paper.get("url") or "Untitled paper",
+            "page_number": 0,
+            "section": "legacy_paper",
             "source": paper.get("source"),
             "year": paper.get("year"),
             "venue": paper.get("venue"),
         }
-        docs = [Document(page_content=chunk, metadata=metadata) for chunk in chunks]
+        evidence_chunks = [
+            EvidenceChunk(
+                chunk_id=f"{paper_id}:legacy:c{index}",
+                paper_id=paper_id,
+                title=metadata["title"],
+                page_number=0,
+                section="legacy_paper",
+                text=chunk,
+            )
+            for index, chunk in enumerate(chunks)
+        ]
+        database.replace_chunks(paper_id, evidence_chunks)
+        docs = [
+            Document(
+                page_content=f"标题：{chunk.title}\n位置：{chunk.section or '摘要'}\n正文：{chunk.text}",
+                metadata={**metadata, "chunk_id": chunk.chunk_id, "canonical_text": chunk.text},
+            )
+            for chunk in evidence_chunks
+        ]
         store.add_documents(docs)
+        database.update_status(paper_id, INDEXED)
         ingested += 1
         logger.info("ingested %s chunks for %s", len(chunks), paper.get("title"))
 
@@ -207,29 +272,14 @@ def ingest_url_list(urls: list[str]) -> str:
     return f"ingested_sources={stats['ingested']}"
 
 
-def collect_and_ingest(
-    topics: list[str] | None = None,
-    provider: str | None = None,
-    max_results: int | None = None,
-) -> str:
-    cfg = load_agent_config()
-    topics = _normalize_topics(topics)
-    if not topics:
-        return "no topics configured"
-    provider = provider or cfg.get("search", {}).get("provider", "tavily")
-    max_results = max_results or int(cfg.get("search", {}).get("max_results", 5))
-
-    sources = collect_sources(topics, provider, max_results)
-    save_sources(sources)
-    stats = ingest_sources(sources)
-    return f"collected={len(sources)} ingested={stats['ingested']}"
-
-
 def collect_papers_and_ingest(
     queries: list[str] | None = None,
     provider: str | None = None,
     max_results: int | None = None,
     include_pdf: bool | None = None,
+    *,
+    registry: ProviderRegistry | None = None,
+    ingestor: ResearchIngestor | None = None,
 ) -> str:
     cfg = load_agent_config()
     queries = _normalize_paper_queries(queries)
@@ -237,6 +287,8 @@ def collect_papers_and_ingest(
         return "no paper queries configured"
 
     providers = _normalize_paper_providers(provider)
+    if providers != ["openalex"]:
+        raise ValueError(f"unsupported paper provider: {providers[0]}")
     paper_cfg = cfg.get("papers", {})
     max_results = max_results or int(paper_cfg.get("max_results", 10))
     include_pdf = include_pdf if include_pdf is not None else bool(paper_cfg.get("include_pdf", False))
@@ -244,13 +296,65 @@ def collect_papers_and_ingest(
     if min_year is not None:
         min_year = int(min_year)
 
-    papers = collect_paper_sources(queries, providers, max_results, min_year)
-    save_paper_sources(papers)
-    stats = ingest_papers(papers, include_pdf)
-    return f"collected={len(papers)} ingested={stats['ingested']}"
+    registry = registry or ProviderRegistry()
+    if ingestor is None:
+        from rag.vector_store import VectorStoreService
+
+        database = ResearchDatabase(default_database_path())
+        ingestor = ResearchIngestor(
+            registry=registry,
+            database=database,
+            download_dir=data_dir() / "papers",
+            vector_index=VectorStoreIndex(VectorStoreService()),
+            allow_full_text=include_pdf,
+        )
+
+    papers = []
+    seen = set()
+    for query in queries:
+        for paper in registry.discover(
+            query,
+            from_year=min_year,
+            max_results=max_results,
+        ):
+            identity = (
+                ("doi", normalize_doi(paper.doi))
+                if normalize_doi(paper.doi)
+                else ("title", normalize_title(paper.title), paper.year)
+            )
+            if identity in seen:
+                continue
+            seen.add(identity)
+            papers.append(paper)
+
+    save_paper_sources([paper.model_dump(mode="json") for paper in papers])
+    results = [ingestor.ingest(paper) for paper in papers]
+    ingested_count = sum(result.status != FAILED for result in results)
+    return f"collected={len(papers)} ingested={ingested_count}"
+
+
+def sync_papers() -> dict[str, int | str]:
+    """Expose legacy discovery with a stable, count-only CLI response."""
+    try:
+        summary = collect_papers_and_ingest()
+    except Exception:
+        return {"status": "sync_failed", "collected": 0, "ingested": 0}
+    counts: dict[str, int] = {}
+    for item in summary.split():
+        name, separator, raw = item.partition("=")
+        if separator and name in {"collected", "ingested"}:
+            try:
+                counts[name] = int(raw)
+            except ValueError:
+                return {"status": "sync_failed", "collected": 0, "ingested": 0}
+    if set(counts) != {"collected", "ingested"}:
+        return {"status": "sync_failed", "collected": 0, "ingested": 0}
+    return {"status": "ok", **counts}
 
 
 def generate_brief(topics: list[str] | None = None) -> str:
+    from rag.rag_service import RagSummarizeService
+
     topics = _normalize_topics(topics)
     if not topics:
         return "no topics configured"
@@ -271,8 +375,6 @@ def run_daily_brief(topics: list[str] | None = None, push: bool = False) -> str:
     cfg = load_agent_config().get("ingestion", {})
     if cfg.get("papers", True):
         collect_papers_and_ingest()
-    if cfg.get("web", False):
-        collect_and_ingest(topics)
     brief = generate_brief(topics)
     _save_report(brief)
 

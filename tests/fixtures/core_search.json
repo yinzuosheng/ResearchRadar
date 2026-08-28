@@ -1,0 +1,22 @@
+{
+  "totalHits": 2,
+  "results": [
+    {
+      "id": 456,
+      "doi": "https://doi.org/10.1000/core",
+      "title": "Inland Water Observation",
+      "authors": [{"name": "Cy Bay"}],
+      "yearPublished": 2023,
+      "publisher": "Open Repository",
+      "abstract": "A repository abstract.",
+      "downloadUrl": "https://core.ac.uk/download/456.pdf",
+      "fullTextIdentifier": "https://repository.example/456.pdf"
+    },
+    {
+      "id": 457,
+      "title": "Landing Page Only",
+      "yearPublished": 2022,
+      "fullTextIdentifier": "https://repository.example/items/457"
+    }
+  ]
+}

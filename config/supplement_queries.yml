@@ -1,0 +1,20 @@
+domain: water-color remote-sensing prediction
+from_year: 2015
+target_metadata: 1200
+target_fulltext: 60
+minimum_relevance_groups: 2
+queries:
+  - chlorophyll-a inland water remote sensing machine learning
+  - lake water quality Sentinel-2 prediction
+  - turbidity Secchi depth remote sensing machine learning
+  - harmful algal bloom remote sensing forecasting
+  - Landsat inland water quality estimation
+  - deep learning lake water quality remote sensing
+  - water color remote sensing neural network
+  - inland water remote sensing domain adaptation
+recent_queries:
+  from_year: 2023
+  target: 120
+representative_queries:
+  sort: cited_by_count
+  target: 80

@@ -12,13 +12,25 @@ def _load_prompt(name: str) -> str:
         return handle.read().strip()
 
 
-def load_system_prompt() -> str:
-    return _load_prompt("main_prompt.txt")
+def load_paper_profile_prompt() -> str:
+    return _load_prompt("paper_profile.txt")
 
 
-def load_rag_prompt() -> str:
-    return _load_prompt("rag_summarize.txt")
+def load_cited_qa_prompt() -> str:
+    return _load_prompt("cited_qa.txt")
 
 
-def load_report_prompt() -> str:
-    return _load_prompt("report_prompt.txt")
+def load_comparison_prompt() -> str:
+    return _load_prompt("comparison.txt")
+
+
+def load_trends_prompt() -> str:
+    return _load_prompt("trends.txt")
+
+
+def load_research_agent_prompt() -> str:
+    return _load_prompt("research_agent.txt")
+
+
+def load_research_plan_prompt() -> str:
+    return _load_prompt("research_plan.txt")

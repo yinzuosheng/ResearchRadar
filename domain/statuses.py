@@ -1,0 +1,10 @@
+"""Paper-ingestion status values stored in the catalog."""
+
+DISCOVERED = "discovered"
+METADATA_READY = "metadata_ready"
+PDF_READY = "pdf_ready"
+PARSED = "parsed"
+PROFILED = "profiled"
+INDEXED = "indexed"
+ABSTRACT_ONLY = "abstract_only"
+FAILED = "failed"

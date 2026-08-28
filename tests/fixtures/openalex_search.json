@@ -1,0 +1,43 @@
+{
+  "meta": {"count": 1},
+  "results": [
+    {
+      "id": "https://openalex.org/W123",
+      "doi": "https://doi.org/10.1000/example",
+      "title": "Water Colour from Space",
+      "publication_year": 2024,
+      "cited_by_count": 12,
+      "updated_date": "2026-07-01T00:00:00Z",
+      "authorships": [
+        {"author": {"display_name": "Ada Lake"}},
+        {"author": {"display_name": "Bo River"}}
+      ],
+      "abstract_inverted_index": {
+        "Water": [0],
+        "colour": [1],
+        "retrieval": [2],
+        "works": [3]
+      },
+      "primary_location": {
+        "landing_page_url": "https://publisher.example/article",
+        "source": {"display_name": "Journal of Water Remote Sensing"}
+      },
+      "open_access": {"is_oa": true, "oa_status": "gold"},
+      "best_oa_location": {
+        "is_oa": true,
+        "pdf_url": "https://repository.example/water-colour.pdf",
+        "landing_page_url": "https://repository.example/record/123",
+        "license": "cc-by"
+      },
+      "locations": [
+        {
+          "is_oa": true,
+          "pdf_url": "https://mirror.example/water-colour.pdf",
+          "landing_page_url": "https://mirror.example/record/123",
+          "license": "cc-by"
+        }
+      ],
+      "content_url": "https://content.openalex.org/works/W123.pdf"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "message": {
+    "DOI": "10.1000/example",
+    "title": ["Water Colour from Space"],
+    "container-title": ["Remote Sensing of Environment"],
+    "abstract": "<jats:p>Crossref abstract.</jats:p>",
+    "author": [
+      {"given": "Ada", "family": "Lake"},
+      {"name": "Water Consortium"}
+    ],
+    "published-print": {"date-parts": [[2024, 5, 1]]},
+    "URL": "https://doi.org/10.1000/example"
+  }
+}
